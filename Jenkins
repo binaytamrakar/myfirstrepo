@@ -4,8 +4,61 @@ pipeline {
     stages {
         stage('build') {
             steps {
-                sh 'mvn --version'
-            }
+                bat ''':: \'>\' - создает и пишет в файл                                                      
+                    :: \'>>\' - дописывает в файл                                                
+                    :: \'@\' - убирает из вывода саму команду                                    
+
+                    ::Переключаем режим вывода на utf8 - для комфортного чтения логов
+                    @chcp 65001
+
+                    :: Проверим наличие переменной, инициализируемой Jenkins
+                    @IF NOT DEFINED WORKSPACE EXIT 1
+
+                    :: Сборка может завершится с разным результатом
+                    :: Пусть наличие определенного файла в директории говорит нам о проблемах со сборкой
+                    :: %CD% - [C]urrent [D]irectory это системная переменная
+                    :: она содержит имя директории в которой запускается скрипт (bat)
+                    @SET ERRFLAG=%CD%\\error.flag
+                    :: Удаляем файл-флаг неудачного завершения от предыдущего запуска
+                    @DEL "%ERRFLAG%"
+
+                    :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+                    :: СОЗДАЕМ СКРИПТ УПРАВЛЕНИЯ CACHE         
+                    :: построчно записываем в build.cos команды для управления Cache 
+                    :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+
+                    :: Если Cache установлена с нормальной или повышенной безопасностью
+                    :: то в первых двух строках имя и пароль пользователя Cache
+                    @ECHO SuperUser>build.cos
+                    @ECHO YourPassword>>build.cos
+
+                    :: Переход в необходимый NAMESPACE
+                    @ECHO zn "SHL_TEST" >>build.cos
+
+                    :: Загружаем и компилируем все исходники в директории сборки;
+                    :: %WORKSPACE% - переменная Jenkins
+                    @ECHO set sc=$System.OBJ.DeletePackage("Test","-d") >>build.cos
+                    @ECHO set sc=$SYSTEM.OBJ.ImportDir("%WORKSPACE%","*.xml","ck",.err,1) >>build.cos
+                    @ECHO set sc=$SYSTEM.OBJ.ImportDir("%WORKSPACE%","*.lut","ck",.err,1) >>build.cos
+                    @ECHO set sc=0
+                    :: Если не получилось, покажем ошибку, чтобы увидеть ее в логах Jenkins
+                    @ECHO if sc\'=1 do $SYSTEM.OBJ.DisplayError(sc) >>build.cos
+
+                    :: и из скрипта cos создадим файл-флаг ошибки, чтобы оповестить скрипт bat
+                    @ECHO if sc\'=1 set file="%ERRFLAG%" o file:("NWS") u file do $SYSTEM.OBJ.DisplayError(sc) c file >>build.cos
+
+                    :: Завершим процесс Cache
+                    @ECHO halt >>build.cos
+
+                    ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+                    :: Вызываем программу управления Cache и передаем ей сформированный скрипт  ::
+                    ::::::::::::::::::::::  ::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+                    C:\\InterSystems\\Ensemble\\bin\\cache.exe -s C:\\InterSystems\\Ensemble\\Mgr -U %%SYS <%CD%\\build.cos
+
+                    :: Если при выполнении скрипта cos был создан файл-флаг ошибки - оповещаем об этом Jenkins
+                    @IF EXIST "%ERRFLAG%" EXIT 1'''
+
+                }
         }
     }
 }
